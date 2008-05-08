@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project basedir="." default="build" name="tagging_2.0">
+<property file="build.properties" />
+<path id="test.classpath" >
+  <pathelement location="${project.classes.dir}" />
+  <pathelement location="${project.lib.dir}/junit.jar" />
+  <fileset dir="${project.lib.dir}">
+    <include name="**/*.jar"/>
+  </fileset>
+</path>
+
+<!-- INIT-->    
+<target name="init">
+	<mkdir dir="${project.dist.dir}" />
+	<mkdir dir="${project.output.dir}" />
+</target>
+<!-- END INIT -->
+
+<!-- COMPILE -->
+<target name="compile" depends="init">
+
+	<javac classpath="${java.classpath}" srcdir="${project.src.dir}" destdir="${project.output.dir}" debug="on" source="1.5" compiler="javac1.5"/>
+	
+</target>
+<!-- END COMPILE -->
+
+<!-- CLEAN -->
+<target name="clean"> 
+
+	<delete dir="${project.dist.dir}"/>
+	<delete dir="${project.output.dir}"/>
+	<delete file="${project.name}${project.dist.version}${project.dist.suffix}"/>
+	
+</target>
+<!-- END CLEAN -->
+
+<!-- BUILD -->
+<target name="build">
+	<antcall target="clean" />
+	<antcall target="compile" />
+	<antcall target="makejar" />
+</target>
+<!-- END BUILD -->
+
+
+<!-- MAKEJAR -->
+<target name="makejar">
+
+	<jar destfile="${project.lib.dir}${project.jar}">
+		<fileset dir="${project.output.dir}">
+			<include name="**/*.class" />
+		</fileset>
+
+	</jar>
+	
+</target>
+<!-- END MAKEJAR -->
+
+<!-- MAKE DISTRIBUTION -->
+<target name="dist" depends="build">
+
+	<tar destfile="${project.name}${project.dist.version}${project.dist.suffix}"
+		 compression="gzip">
+		  <tarfileset dir="${project.lib.dir}" prefix="lib">
+			<include name="${project.jar}"/>
+		  </tarfileset>
+		  <tarfileset dir="${project.bin.dir}" prefix="bin" mode="744">
+		  	<include name="imapfsmnt"/>		  	
+		  </tarfileset>
+		  <tarfileset dir="${project.bin.dir}" prefix="jni" mode="744">
+		  	<include name="libjavafs.so"/>		  	
+		  </tarfileset>				
+	</tar>
+		
+
+</target>
+<!-- END MAKE DISTRIBUTION -->
+	
+<!-- TEST -->
+<target name="test" depends="build">
+<junit printsummary="withOutAndErr" haltonfailure="yes">
+  <classpath refid="test.classpath"/>
+
+  <formatter type="plain"/>
+
+  <batchtest fork="yes" todir="${project.temp.dir}">
+    <fileset dir="${project.src.dir}">
+      <include name="**/*Test*.java"/>
+    </fileset>
+  </batchtest>
+</junit>
+</target>
+
+<!-- END TEST -->
+
+<!-- JAVADOC -->
+<target name="doc">
+<javadoc destdir="docs/api" author="true" version="true" use="true" windowtitle="Tagging Graph Analysis API">
+
+    <packageset dir="src">
+      <include name="ca/ubc/ece/dsg/**"/>
+    </packageset>
+
+    <doctitle><![CDATA[<h1>Test</h1>]]></doctitle>
+    <bottom><![CDATA[<i>Copyright &#169; 2007 Networked Systems Lab. All Rights Reserved.</i>]]></bottom>
+    <tag name="todo" scope="all" description="To do:"/>
+    <link offline="true" href="http://java.sun.com/j2se/1.5.0/docs/api/" packagelistLoc="/tmp"/>
+    <link href="http://developer.java.sun.com/developer/products/xml/docs/api/"/>
+  </javadoc>
+</target>
+
+
+<!-- END JavaDoc -->
+	
+</project>
