@@ -39,5 +39,5 @@ DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/usr/lib:/usr/local/lib:$HOMEPATH/lib/jni
 
 OPTIONS="-Djava.library.path=$DYLD_LIBRARY_PATH -Dimapfs.username=$IMAPFS_USERNAME -Dimapfs.password=$REPLY"
 
-$JAVA_HOME/bin/java -cp $CLASSPATH $OPTIONS dk.qabi.imapfs.IMAPFileSystem $1 $2
+$JAVA_HOME/bin/java -cp $CLASSPATH $OPTIONS dk.qabi.imapfs.IMAPMount $1 $2
 

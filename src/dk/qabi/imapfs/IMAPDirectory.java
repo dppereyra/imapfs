@@ -157,4 +157,13 @@ public class IMAPDirectory extends IMAPEntry {
 
     return null;
   }
+
+  public void delete() throws MessagingException {
+    folder.delete(true);
+    parent.removeChild(this);
+  }
+
+  private void removeChild(IMAPDirectory child) {
+    children.remove(child);
+  }
 }

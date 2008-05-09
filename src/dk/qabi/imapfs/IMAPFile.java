@@ -197,6 +197,18 @@ public class IMAPFile extends IMAPEntry {
       part.setHeader("Content-Type", contentType);
 
     newMsg.setSentDate(new Date());
+    replaceContainedMessage(newMsg);
+  }
+
+  public void setTime(long modifiedTime) throws MessagingException {
+    MimeMessage newMsg = new MimeMessage((MimeMessage) msg);
+
+    newMsg.setSentDate(new Date(modifiedTime));
+
+    replaceContainedMessage(newMsg);
+  }
+
+  private void replaceContainedMessage(MimeMessage newMsg) throws MessagingException {
     newMsg.saveChanges();
     msg.setFlag(Flags.Flag.DELETED, true);
     parent.expunge();
