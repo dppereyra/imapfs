@@ -21,18 +21,23 @@
 
 export JAVA_HOME=/System/Library/Frameworks/JavaVM.framework/Versions/1.5/Home
 
-HOMEPATH=/projects/imapfs
+read -p "Enter username: "
+IMAPFS_USERNAME=$REPLY
+
+read -s -p "Enter password: "
+
+HOMEPATH=.
 
 FUSEJ=$HOMEPATH/lib/fuse-j.jar
 COMMONSLOGGING=$HOMEPATH/lib/commons-logging-1.1.1.jar
 JAVAMAIL=$HOMEPATH/lib/mailapi.jar:$HOMEPATH/lib/imap.jar:$HOMEPATH/lib/activation.jar
 
-CLASSPATH=.:$HOMEPATH/classes:$FUSEJ:$COMMONSLOGGING:$JAVAMAIL
+CLASSPATH=.:$HOMEPATH/build/classes:$FUSEJ:$COMMONSLOGGING:$JAVAMAIL
 
 DYLD_LIBRARY_PATH=/System/Library/Frameworks/JavaVM.framework/Versions/A:/System/Library/Frameworks/JavaVM.framework/Versions/1.5/Libraries
 DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/usr/lib:/usr/local/lib:$HOMEPATH/lib/jni
 
-OPTIONS="-Djava.library.path=$DYLD_LIBRARY_PATH"
+OPTIONS="-Djava.library.path=$DYLD_LIBRARY_PATH -Dimapfs.username=$IMAPFS_USERNAME -Dimapfs.password=$REPLY"
 
-$JAVA_HOME/bin/java -cp $CLASSPATH $OPTIONS dk.qabi.imapfs.IMAPFileSystem url_goes_here $1
+$JAVA_HOME/bin/java -cp $CLASSPATH $OPTIONS dk.qabi.imapfs.IMAPFileSystem $1 $2
 

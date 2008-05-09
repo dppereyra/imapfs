@@ -1,7 +1,5 @@
 /*
- * Copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
- *
- * Based on bloggerfs which is copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
+ * Copyright (c) 2008 Dennis Thrysøe
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free

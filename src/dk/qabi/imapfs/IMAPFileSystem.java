@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
+ * Copyright (c) 2008 Dennis Thrysøe
  *
  * Based on bloggerfs which is copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
  *
@@ -34,14 +34,11 @@ import org.apache.commons.logging.LogFactory;
  * This class implements a user-level Filesystem based on FUSE and FUSE-J interacting with an IMAP server.
  *
  * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
- * todo various metainfo like filesystem type etc.
- * todo implement lazy loading, and some kind of statelessness
- * todo copy data into and out of messages
- * todo How to handle directory hierachy in relation to gmail's way of doing it?
+ * todo implement lazy loading as well
+ * todo implement buffering on local disk and only write on flush()
  * todo implement rest of fuse API methods
  * todo implement splitting in multiple messages at configurable file lengths
- * todo implement filehandle table to keep track of open files, and release them when no longer used
- * todo implement buffering on local disk and only write on flush()
+ * todo actual local LRU caching?
  */
 public class IMAPFileSystem implements Filesystem {
 
@@ -170,47 +167,83 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void chmod(String arg0, int arg1) throws FuseException {
-    throw new FuseException("Read Only").initErrno(FuseException.EACCES);
+    throw new FuseException("chmod not supported").initErrno(FuseException.EACCES);
   }
 
   public void chown(String arg0, int arg1, int arg2) throws FuseException {
-    throw new FuseException("Read Only").initErrno(FuseException.EACCES);
+    throw new FuseException("chown not supported").initErrno(FuseException.EACCES);
   }
 
   public void link(String arg0, String arg1) throws FuseException {
     throw new FuseException("link not supported").initErrno(FuseException.EACCES);
   }
 
-  public void mkdir(String arg0, int arg1) throws FuseException {
-    throw new FuseException("Read Only").initErrno(FuseException.EACCES);
+  public void mkdir(String path, int mode) throws FuseException {
+    IMAPEntry entry = findEntry(PathUtil.extractParent(path));
+
+    if (entry == null) {
+      log.info("Path '" + path + "' not found");
+      throw new FuseException("Path '" + path + "' not found").initErrno(FuseException.ENOENT);
+    }
+
+    if (!(entry instanceof IMAPDirectory)) {
+      log.warn("Parent entry is not a directory");
+      throw new FuseException("Parent entry is not a directory").initErrno(FuseException.EACCES);
+    }
+
+    IMAPDirectory dir = (IMAPDirectory) entry;
+    try {
+      new IMAPDirectory(PathUtil.extractName(path), dir);
+    } catch (MessagingException e) {
+      log.warn("Error creating directory '"+path+"'");
+      throw new FuseException("Error creating directory '"+path+"'").initErrno(FuseException.EACCES);
+    }
   }
 
-  public void mknod(String arg0, int arg1, int arg2) throws FuseException {
-    throw new FuseException("Read Only").initErrno(FuseException.EACCES);
+  public void mknod(String path, int mode, int rdev) throws FuseException {
+    // todo
+    throw new FuseException("todo").initErrno(FuseException.EACCES);
   }
 
-  public void rename(String arg0, String arg1) throws FuseException {
-    throw new FuseException("Read Only").initErrno(FuseException.EACCES);
+  public void rename(String from, String to) throws FuseException {
+    // todo
+    throw new FuseException("todo").initErrno(FuseException.EACCES);
   }
 
-  public void rmdir(String arg0) throws FuseException {
-    throw new FuseException("Read Only").initErrno(FuseException.EACCES);
+  public void rmdir(String path) throws FuseException {
+    // todo
+    throw new FuseException("todo").initErrno(FuseException.EACCES);
+  }
+
+  public void truncate(String path, long size) throws FuseException {
+    // todo
+    throw new FuseException("todo").initErrno(FuseException.EACCES);
+  }
+
+  public void utime(String path, int atime, int mtime) throws FuseException {
+    // todo
+    throw new FuseException("todo").initErrno(FuseException.EACCES);
+  }
+
+  public void flush(String path, long fh) throws FuseException {
+    // todo
+    throw new FuseException("todo").initErrno(FuseException.EACCES);
+  }
+
+  public void fsync(String path, long fh, boolean isDatasync) throws FuseException {
+    // todo
+    throw new FuseException("todo").initErrno(FuseException.EACCES);
   }
 
   public void symlink(String arg0, String arg1) throws FuseException {
     throw new FuseException("symlink not supported").initErrno(FuseException.EACCES);
   }
 
-  public void truncate(String arg0, long arg1) throws FuseException {
-    throw new FuseException("Read Only").initErrno(FuseException.EACCES);
-  }
-
   public void unlink(String arg0) throws FuseException {
     throw new FuseException("unlink not supported").initErrno(FuseException.EACCES);
   }
 
-  public void utime(String arg0, int arg1, int arg2) throws FuseException {
-  }
+  public void release(String path, long fh, int flags) throws FuseException {}
 
   public void read(String path, long fh, ByteBuffer buf, long offset) throws FuseException {
     IMAPEntry entry = findEntry(path);
@@ -267,16 +300,6 @@ public class IMAPFileSystem implements Filesystem {
       log.error("I/O error reading data");
       throw new FuseException("I/O error reading data").initErrno(FuseException.EIO); // Map to better error code?
     }
-  }
-
-  public void flush(String path, long fh) throws FuseException {
-  }
-
-  public void release(String path, long fh, int flags) throws FuseException {
-
-  }
-
-  public void fsync(String path, long fh, boolean isDatasync) throws FuseException {
   }
 
   public static void main(String[] args) throws MessagingException, MalformedURLException {

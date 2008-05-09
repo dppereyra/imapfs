@@ -1,7 +1,5 @@
 /*
- * Copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
- *
- * Based on bloggerfs which is copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
+ * Copyright (c) 2008 Dennis Thrysøe
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -43,7 +41,7 @@ public class IMAPFile extends IMAPEntry {
   private Message msg;
 
   /**
-   * Constructor for creating new files or directories
+   * Constructor for creating a new file
    * @param name name of the created entry
    * @param parent IMapFileEntry for the parent
    * @throws javax.mail.MessagingException if IMAP communication goes wrong
@@ -53,7 +51,8 @@ public class IMAPFile extends IMAPEntry {
     this.absolutePath = makeAbsolutePath();
     this.name = name;
 
-      // todo Check if a file with this name already exists, and throw an exception if so
+    if (parent.getChildFile(name) != null)
+      throw new MessagingException("File '"+absolutePath+"' already exists");
 
     this.msg = new MimeMessage(Session.getDefaultInstance(new Properties(), null));
     msg.setSubject(name);
