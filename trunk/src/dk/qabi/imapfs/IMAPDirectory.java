@@ -1,7 +1,5 @@
 /*
- * Copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
- *
- * Based on bloggerfs which is copyright (c) 2007 Networked Systems Lab - http://www.ece.ubc.ca
+ * Copyright (c) 2008 Dennis Thrysøe
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -35,7 +33,7 @@ public class IMAPDirectory extends IMAPEntry {
   private IMAPFolder folder;
 
   /**
-   * Constructor for creating new files or directories
+   * Constructor for creating a new directory
    * @param name name of the created entry
    * @param parent IMapFileEntry for the parent
    * @throws javax.mail.MessagingException if IMAP communication goes wrong
@@ -45,12 +43,13 @@ public class IMAPDirectory extends IMAPEntry {
     this.absolutePath = makeAbsolutePath();
     this.name = name;
 
-    // todo Check if a folder with this name already exists, and throw an exception if so
-
     folder = parent.getChildFolder(name);
-    if (!folder.exists())
+    if (!folder.exists()) {
       if (!folder.create(Folder.HOLDS_MESSAGES))
         throw new MessagingException("Folder '" + name + "' not created");
+    } else {
+      throw new MessagingException("Directory '"+absolutePath+"' already exists");
+    }
   }
 
   /**
@@ -144,5 +143,18 @@ public class IMAPDirectory extends IMAPEntry {
     if (folder == null)
       throw new IllegalStateException("Entry not associated with folder");
     return (IMAPFolder) folder.getFolder(name);
+  }
+
+  public Object getChildFile(String name) throws MessagingException {
+    if (folder == null)
+      throw new IllegalStateException("Entry not associated with folder");
+
+    Message[] msgs = folder.getMessages();
+    for (Message msg : msgs) {
+      if (msg.getSubject().equals(name))
+        return msg;
+    }
+
+    return null;
   }
 }
