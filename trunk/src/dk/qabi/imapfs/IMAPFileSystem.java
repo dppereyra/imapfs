@@ -22,11 +22,8 @@ package dk.qabi.imapfs;
 import java.nio.ByteBuffer;
 import java.io.IOException;
 import java.net.URL;
-import java.net.MalformedURLException;
-
 import fuse.*;
 import javax.mail.MessagingException;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -34,7 +31,7 @@ import org.apache.commons.logging.LogFactory;
  * This class implements a user-level Filesystem based on FUSE and FUSE-J interacting with an IMAP server.
  *
  * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
- * todo implement lazy loading as well
+ * todo implement lazy loading
  * todo implement buffering on local disk and only write on flush()
  * todo implement rest of fuse API methods
  * todo implement splitting in multiple messages at configurable file lengths
@@ -107,11 +104,6 @@ public class IMAPFileSystem implements Filesystem {
     FuseDirEnt[] dirEntries;
     IMAPDirectory dir = (IMAPDirectory)findEntry(absolutePath);
 
-    if (dir == null) {
-      log.info("Directory '" + absolutePath + "' not found");
-      throw new FuseException("Directory '" + absolutePath + "' not found").initErrno(FuseException.ENOENT);
-    }
-
     if (dir.isDirectory()) {
       IMAPEntry[] children = dir.getChildren();
       dirEntries= new FuseDirEnt[children.length];
@@ -129,24 +121,27 @@ public class IMAPFileSystem implements Filesystem {
     return dirEntries;
   }
 
-  private IMAPEntry findEntry(String path) {
-    if (path == null)
-      return null;
-    else {
+  private IMAPEntry findEntry(String path) throws FuseException {
+    IMAPEntry entry;
+    if (path == null) {
+      entry = null;
+    } else {
       if ("/".equals(path))
-        return rootEntry;
+        entry = rootEntry;
       else
-        return rootEntry.get(path.substring(1));
+        entry = rootEntry.get(path.substring(1));
     }
+
+    if (entry == null) {
+      log.warn("Path '" + path + "' not found");
+      throw new FuseException("Path '" + path + "' not found").initErrno(FuseException.ENOENT);
+    }
+
+    return entry;
   }
 
   public long open(String path, int flags) throws FuseException {
     IMAPEntry entry = findEntry(path);
-
-    if (entry == null) {
-      log.info("Path '" + path + "' not found");
-      throw new FuseException("Path '" + path + "' not found").initErrno(FuseException.ENOENT);
-    }
 
     if (entry.isDirectory()) {
       log.warn("Cannot open directory entry");
@@ -181,11 +176,6 @@ public class IMAPFileSystem implements Filesystem {
   public void mkdir(String path, int mode) throws FuseException {
     IMAPEntry entry = findEntry(PathUtil.extractParent(path));
 
-    if (entry == null) {
-      log.info("Path '" + path + "' not found");
-      throw new FuseException("Path '" + path + "' not found").initErrno(FuseException.ENOENT);
-    }
-
     if (!(entry instanceof IMAPDirectory)) {
       log.warn("Parent entry is not a directory");
       throw new FuseException("Parent entry is not a directory").initErrno(FuseException.EACCES);
@@ -211,8 +201,16 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void rmdir(String path) throws FuseException {
-    // todo
-    throw new FuseException("todo").initErrno(FuseException.EACCES);
+    IMAPDirectory dir = (IMAPDirectory)findEntry(path);
+
+    if (dir.isDirectory()) {
+      try {
+        dir.delete();
+      } catch (MessagingException e) {
+        log.warn("Error deleting directory '"+path+"'");
+        throw new FuseException("Error deleting directory '"+path+"'").initErrno(FuseException.EACCES);
+      }
+    }
   }
 
   public void truncate(String path, long size) throws FuseException {
@@ -221,17 +219,27 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void utime(String path, int atime, int mtime) throws FuseException {
-    // todo
-    throw new FuseException("todo").initErrno(FuseException.EACCES);
+    IMAPEntry entry = findEntry(path);
+
+    if (!(entry instanceof IMAPFile)) {
+      log.warn("Cannot update time on directory entry");
+      throw new FuseException("Cannot update time on directory entry").initErrno(FuseException.EACCES);
+    }
+
+    try {
+      ((IMAPFile)entry).setTime(mtime*1000);
+    } catch (MessagingException e) {
+      log.error("Error updating file");
+      throw new FuseException("Error updating file").initErrno(FuseException.EIO); // Map to better error code?
+    }
   }
 
   public void flush(String path, long fh) throws FuseException {
-    // todo
-    throw new FuseException("todo").initErrno(FuseException.EACCES);
+    // Ignore for now
   }
 
   public void fsync(String path, long fh, boolean isDatasync) throws FuseException {
-    // todo
+    // todo flush any open write buffer for the given path
     throw new FuseException("todo").initErrno(FuseException.EACCES);
   }
 
@@ -247,11 +255,6 @@ public class IMAPFileSystem implements Filesystem {
 
   public void read(String path, long fh, ByteBuffer buf, long offset) throws FuseException {
     IMAPEntry entry = findEntry(path);
-
-    if (entry == null) {
-      log.warn("Path '" + path + "' not found");
-      throw new FuseException("Path '" + path + "' not found").initErrno(FuseException.ENOENT);
-    }
 
     if (!(entry instanceof IMAPFile)) {
       log.warn("Cannot read data from directory entry");
@@ -279,11 +282,6 @@ public class IMAPFileSystem implements Filesystem {
       throw new FuseException("writepage not supported").initErrno(FuseException.EACCES);
     }
 
-    if (entry == null) {
-      log.warn("Path '" + path + "' not found");
-      throw new FuseException("Path '" + path + "' not found").initErrno(FuseException.ENOENT);
-    }
-
     if (!(entry instanceof IMAPFile)) {
       log.warn("Cannot write data to directory entry");
       throw new FuseException("Cannot write data to directory entry").initErrno(FuseException.EACCES);
@@ -300,35 +298,6 @@ public class IMAPFileSystem implements Filesystem {
       log.error("I/O error reading data");
       throw new FuseException("I/O error reading data").initErrno(FuseException.EIO); // Map to better error code?
     }
-  }
-
-  public static void main(String[] args) throws MessagingException, MalformedURLException {
-
-    if (args.length < 2) {
-      System.out.println("[Error]: Must specify a mounting point");
-      System.out.println();
-      System.out.println("[Usage]: imapfsmnt <mounting point>");
-      System.exit(-1);
-    }
-
-    final String urlSpec = args[0];
-    final URL url = new URL(null, urlSpec, new IMAPStreamHandler());
-    final String mountpoint = args[1];
-
-    String[] fs_args = new String[4];
-    fs_args[0] = "-f";
-    fs_args[1] = "-s";
-    fs_args[2] = mountpoint;
-    fs_args[3] = "-ovolname="+ url.getHost() + ",fssubtype=7";
-
-    Filesystem imapfs = new IMAPFileSystem(url);
-
-    try {
-      FuseMount.mount(fs_args, imapfs);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-
   }
 
 }
