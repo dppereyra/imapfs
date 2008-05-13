@@ -130,8 +130,6 @@ public class IMAPDirectory extends IMAPEntry {
   }
 
   void expunge() throws MessagingException {
-    if (folder == null)
-      throw new IllegalStateException("Entry not associated with folder");
     folder.expunge();
   }
 
@@ -140,15 +138,10 @@ public class IMAPDirectory extends IMAPEntry {
   }
 
   public IMAPFolder getChildFolder(String name) throws MessagingException {
-    if (folder == null)
-      throw new IllegalStateException("Entry not associated with folder");
     return (IMAPFolder) folder.getFolder(name);
   }
 
   public Object getChildFile(String name) throws MessagingException {
-    if (folder == null)
-      throw new IllegalStateException("Entry not associated with folder");
-
     Message[] msgs = folder.getMessages();
     for (Message msg : msgs) {
       if (msg.getSubject().equals(name))
@@ -166,4 +159,21 @@ public class IMAPDirectory extends IMAPEntry {
   private void removeChild(IMAPDirectory child) {
     children.remove(child);
   }
+
+  public int hashCode() {
+    return absolutePath.hashCode();
+  }
+
+  public boolean equals(Object obj) {
+    return obj instanceof IMAPDirectory && ((IMAPDirectory) obj).getAbsoluteName().equals(absolutePath);
+  }
+
+  public void renameTo(String newPath) throws MessagingException {
+    if (folder.renameTo(folder.getStore().getFolder(newPath))) {
+      this.absolutePath = newPath;
+      this.name = PathUtil.extractName(newPath);
+    } else
+      throw new MessagingException("Directory not renamed");
+  }
+
 }

@@ -33,9 +33,9 @@ import org.apache.commons.logging.LogFactory;
  * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
  * todo implement lazy loading
  * todo implement buffering on local disk and only write on flush()
- * todo implement rest of fuse API methods
  * todo implement splitting in multiple messages at configurable file lengths
- * todo actual local LRU caching?
+ * todo improve performance with actual local LRU caching on disk?
+ * todo multiple IMAP stores?
  */
 public class IMAPFileSystem implements Filesystem {
 
@@ -174,14 +174,14 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void mkdir(String path, int mode) throws FuseException {
-    IMAPEntry entry = findEntry(PathUtil.extractParent(path));
+    IMAPEntry parent = findEntry(PathUtil.extractParent(path));
 
-    if (!(entry instanceof IMAPDirectory)) {
-      log.warn("Parent entry is not a directory");
-      throw new FuseException("Parent entry is not a directory").initErrno(FuseException.EACCES);
+    if (!(parent instanceof IMAPDirectory)) {
+      log.warn("Parent parent is not a directory");
+      throw new FuseException("Parent parent is not a directory").initErrno(FuseException.EACCES);
     }
 
-    IMAPDirectory dir = (IMAPDirectory) entry;
+    IMAPDirectory dir = (IMAPDirectory) parent;
     try {
       new IMAPDirectory(PathUtil.extractName(path), dir);
     } catch (MessagingException e) {
@@ -191,13 +191,63 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void mknod(String path, int mode, int rdev) throws FuseException {
-    // todo
-    throw new FuseException("todo").initErrno(FuseException.EACCES);
+    IMAPEntry parent = findEntry(PathUtil.extractParent(path));
+
+    if (!(parent instanceof IMAPDirectory)) {
+      log.warn("Parent entry is not a directory");
+      throw new FuseException("Parent entry is not a directory").initErrno(FuseException.EACCES);
+    }
+
+    IMAPDirectory dir = (IMAPDirectory) parent;
+    try {
+      new IMAPFile(PathUtil.extractName(path), dir);
+    } catch (MessagingException e) {
+      log.warn("Error creating file '"+path+"'");
+      throw new FuseException("Error creating file '"+path+"'").initErrno(FuseException.EACCES);
+    }
   }
 
   public void rename(String from, String to) throws FuseException {
-    // todo
-    throw new FuseException("todo").initErrno(FuseException.EACCES);
+    IMAPEntry src = findEntry(from);
+    IMAPEntry srcdir = findEntry(PathUtil.extractParent(from));
+    IMAPEntry destdir = findEntry(PathUtil.extractParent(to));
+
+    if (src == null) {
+      log.warn("Source does not exist");
+      throw new FuseException("Source does not exist").initErrno(FuseException.EACCES);
+    }
+
+    if (!(srcdir instanceof IMAPDirectory)) {
+      log.warn("Source is not an existing directory");
+      throw new FuseException("Source is not an existing directory").initErrno(FuseException.EACCES);
+    }
+
+    if (!(destdir instanceof IMAPDirectory)) {
+      log.warn("Destination is not an existing directory");
+      throw new FuseException("Destination is not an existing directory").initErrno(FuseException.EACCES);
+    }
+
+    try {
+
+      if (src instanceof IMAPDirectory) {
+        ((IMAPDirectory)src).renameTo(to);
+      } else {
+        final IMAPFile file = (IMAPFile)src;
+
+        if (!srcdir.equals(destdir)) {
+          file.moveTo((IMAPDirectory)destdir);
+        }
+  
+        final String destName = PathUtil.extractName(to);
+        if (!destName.equals(file.getName())) {
+          file.rename(destName);
+        }
+      }
+
+    } catch (MessagingException e) {
+      log.error("Error renaming", e);
+      throw new FuseException("Error renaming: " + e.getMessage()).initErrno(FuseException.EACCES);
+    }
   }
 
   public void rmdir(String path) throws FuseException {
@@ -214,8 +264,19 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void truncate(String path, long size) throws FuseException {
-    // todo
-    throw new FuseException("todo").initErrno(FuseException.EACCES);
+    IMAPEntry entry = findEntry(path);
+
+    if (!(entry instanceof IMAPFile)) {
+      log.warn("Cannot truncate directory entry");
+      throw new FuseException("Cannot truncate directory entry").initErrno(FuseException.EACCES);
+    }
+
+    try {
+      ((IMAPFile)entry).truncate(size);
+    } catch (Exception e) {
+      log.error("Error updating file");
+      throw new FuseException("Error updating file").initErrno(FuseException.EIO); // Map to better error code?
+    }
   }
 
   public void utime(String path, int atime, int mtime) throws FuseException {
