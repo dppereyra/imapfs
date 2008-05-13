@@ -87,9 +87,6 @@ public class IMAPFile extends IMAPEntry {
    * @throws java.io.IOException if I/O errors occur
    */
   public long getSize() throws MessagingException, IOException {
-    if (this.msg == null)
-      throw new IllegalStateException("Entry " + absolutePath + " not associated with a message");
-
     String[] headerValues = msg.getHeader("X-IMAPFS-Filesize");
     if (headerValues != null && headerValues.length > 0) {
       String header = headerValues[0];
@@ -113,8 +110,6 @@ public class IMAPFile extends IMAPEntry {
    * @throws javax.mail.MessagingException if IMAP communication goes wrong
    */
   public long getTime() throws MessagingException {
-    if (this.msg == null)
-      throw new IllegalStateException("Entry " + absolutePath + " not associated with a message");
     return msg.getSentDate().getTime();
   }
 
@@ -148,9 +143,6 @@ public class IMAPFile extends IMAPEntry {
   }
 
   private InputStream getInputStream() throws IOException, MessagingException {
-    if (this.msg == null)
-      throw new IllegalStateException("Entry " + absolutePath + " not associated with a message");
-
     Object content = msg.getContent();
 
     if (content instanceof Multipart) {
@@ -164,9 +156,6 @@ public class IMAPFile extends IMAPEntry {
   }
 
   public void writeData(ByteBuffer buf, long offset) throws MessagingException, IOException {
-    if (this.msg == null)
-      throw new IllegalStateException("Entry " + absolutePath + " not associated with a message");
-
     MimeMessage newMsg = new MimeMessage((MimeMessage) msg);
     Object content = msg.getContent();
 
@@ -214,5 +203,68 @@ public class IMAPFile extends IMAPEntry {
     parent.expunge();
     this.msg = newMsg;
     parent.getFolder().addMessages(new Message[]{newMsg});
+  }
+
+  public void rename(String newName) throws MessagingException {
+    MimeMessage newMsg = new MimeMessage((MimeMessage) msg);
+    newMsg.setSubject(newName);
+    replaceContainedMessage(newMsg);
+  }
+
+  public void truncate(long length) throws MessagingException, IOException {
+    MimeMessage newMsg = new MimeMessage((MimeMessage) msg);
+    Object content = msg.getContent();
+
+    BodyPart part;
+    Multipart m;
+    if (content instanceof Multipart) {
+      m = (Multipart) content;
+    } else {
+      m = new MimeMultipart();
+      newMsg.setContent(m);
+    }
+
+    if (m.getCount() < 1) {
+      part = new MimeBodyPart();
+      m.addBodyPart(part, 0);
+    } else {
+      part = m.getBodyPart(0);
+    }
+
+    long size = getSize();
+    ByteBuffer buf;
+    if (size < length) {
+      // add more bytes
+      buf = ByteBuffer.allocate((int) (length - size));
+    } else {
+      // otherwise remove bytes or do nothing
+      buf = ByteBuffer.allocate(0);
+    }
+
+    DataSource ds = new RewritingDataSource(part.getDataHandler(), buf, length);
+    part.setDataHandler(new DataHandler(ds));
+    part.setFileName("_imapfsdata.bin");
+
+    newMsg.setHeader("X-IMAPFS-Filesize", String.valueOf(size));
+
+    String contentType = MIMETypes.get(PathUtil.extractExtension(name));
+    if (contentType != null)
+      part.setHeader("Content-Type", contentType);
+
+    newMsg.setSentDate(new Date());
+    replaceContainedMessage(newMsg);
+  }
+
+  public Message getMessage() {
+    return msg;
+  }
+
+  public void moveTo(IMAPDirectory dest) throws MessagingException {
+    // Make a copy...
+    parent.getFolder().copyMessages(new Message[]{msg}, dest.getFolder());
+
+    // ... and remove this
+    msg.setFlag(Flags.Flag.DELETED, true);
+    parent.expunge();
   }
 }

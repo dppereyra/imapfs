@@ -65,6 +65,9 @@ public class IMAPConnection {
     else
       this.folder = store.getDefaultFolder();
 
+    if (!folder.exists())
+      folder.create(Folder.HOLDS_MESSAGES);
+
     folder.open(Folder.READ_WRITE);
   }
 
