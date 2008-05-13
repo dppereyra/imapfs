@@ -31,7 +31,6 @@ import org.apache.commons.logging.LogFactory;
  * This class implements a user-level Filesystem based on FUSE and FUSE-J interacting with an IMAP server.
  *
  * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
- * todo implement lazy loading
  * todo implement buffering on local disk and only write on flush()
  * todo implement splitting in multiple messages at configurable file lengths
  * todo improve performance with actual local LRU caching on disk?
@@ -105,7 +104,13 @@ public class IMAPFileSystem implements Filesystem {
     IMAPDirectory dir = (IMAPDirectory)findEntry(absolutePath);
 
     if (dir.isDirectory()) {
-      IMAPEntry[] children = dir.getChildren();
+      IMAPEntry[] children;
+      try {
+        children = dir.getChildren();
+      } catch (MessagingException e) {
+        log.error("Error getting children", e);
+        throw new FuseException("Error getting children: " + e.getMessage()).initErrno(FuseException.ENOENT);
+      }
       dirEntries= new FuseDirEnt[children.length];
 
       for (int i = 0; i < children.length; i++) {
@@ -129,7 +134,12 @@ public class IMAPFileSystem implements Filesystem {
       if ("/".equals(path))
         entry = rootEntry;
       else
-        entry = rootEntry.get(path.substring(1));
+        try {
+          entry = rootEntry.get(path.substring(1));
+        } catch (MessagingException e) {
+          log.error("Error finding entry", e);
+          throw new FuseException("Error finding entry: " + e.getMessage()).initErrno(FuseException.ENOENT);
+        }
     }
 
     if (entry == null) {
