@@ -18,8 +18,10 @@
 package dk.qabi.imapfs;
 
 import javax.mail.*;
-import java.util.Map;
-import java.util.HashMap;
+import javax.mail.search.SubjectTerm;
+import java.util.List;
+import java.util.ArrayList;
+
 import com.sun.mail.imap.IMAPFolder;
 
 /**
@@ -29,7 +31,6 @@ import com.sun.mail.imap.IMAPFolder;
  */
 public class IMAPDirectory extends IMAPEntry {
 
-  private Map<String, IMAPEntry> children = new HashMap<String, IMAPEntry>();
   private IMAPFolder folder;
 
   /**
@@ -50,6 +51,9 @@ public class IMAPDirectory extends IMAPEntry {
     } else {
       throw new MessagingException("Directory '"+absolutePath+"' already exists");
     }
+
+    if (!folder.isOpen())
+      folder.open(Folder.READ_WRITE);
   }
 
   /**
@@ -69,17 +73,8 @@ public class IMAPDirectory extends IMAPEntry {
       this.absolutePath = "/";
     }
 
-    Folder[] folders = folder.list();
-    for (Folder f : folders) {
-      IMAPEntry child = new IMAPDirectory((IMAPFolder) f, this);
-      children.put(child.getName(), child);
-    }
-
-    Message[] messages = folder.getMessages();
-    for (Message m : messages) {
-      IMAPEntry child = new IMAPFile(m, this);
-      children.put(child.getName(), child);
-    }
+    if (!folder.isOpen())
+      folder.open(Folder.READ_WRITE);
   }
 
   /**
@@ -100,31 +95,58 @@ public class IMAPDirectory extends IMAPEntry {
     return this.parent == null;
   }
 
-  public IMAPEntry[] getChildren() {
-    if (children != null)
-      return children.values().toArray(new IMAPEntry[children.size()]);
-    else
-      return new IMAPEntry[0];
+  public IMAPEntry[] getChildren() throws MessagingException {
+    List<IMAPEntry> children = new ArrayList<IMAPEntry>();
+
+    Folder[] folders = folder.list();
+    for (Folder f : folders) {
+      IMAPEntry child = new IMAPDirectory((IMAPFolder) f, this);
+      children.add(child);
+    }
+
+    Message[] messages = folder.getMessages();
+    for (Message m : messages) {
+      IMAPEntry child = new IMAPFile(m, this);
+      children.add(child);
+    }
+
+    return children.toArray(new IMAPEntry[children.size()]);
   }
 
-  public IMAPEntry get(String relPath) {
+  public IMAPEntry get(String relPath) throws MessagingException {
     int pos = relPath.indexOf('/');
     IMAPEntry result;
 
     if (pos > -1) {
       String firstPart = relPath.substring(0, pos);
       String rest = relPath.substring(pos+1);
-      result = ((IMAPDirectory)children.get(firstPart)).get(rest);
+      result = ((IMAPDirectory)findChild(firstPart)).get(rest);
     } else {
-      result = children.get(relPath);
+      result = findChild(relPath);
     }
 
     return result;
   }
 
-  public void printSubtree(int level) {
+  private IMAPEntry findChild(String name) throws MessagingException {
+    Folder f = folder.getFolder(name);
+
+    if (f.exists()) {
+      return new IMAPDirectory((IMAPFolder)f, this);
+    } else {
+      Message[] msgs = folder.search(new SubjectTerm(name));
+
+      if (msgs.length > 0)
+        return new IMAPFile(msgs[0], this);
+      else
+        return null;
+
+    }
+  }
+
+  public void printSubtree(int level) throws MessagingException {
     super.printSubtree(level);
-    for (IMAPEntry e : children.values()) {
+    for (IMAPEntry e : getChildren()) {
       e.printSubtree(level+1);
     }
   }
@@ -152,12 +174,9 @@ public class IMAPDirectory extends IMAPEntry {
   }
 
   public void delete() throws MessagingException {
+    folder.close(true); // close and expunge
     folder.delete(true);
-    parent.removeChild(this);
-  }
-
-  private void removeChild(IMAPDirectory child) {
-    children.remove(child);
+    folder = null;
   }
 
   public int hashCode() {
@@ -169,11 +188,14 @@ public class IMAPDirectory extends IMAPEntry {
   }
 
   public void renameTo(String newPath) throws MessagingException {
+    folder.close(true);
     if (folder.renameTo(folder.getStore().getFolder(newPath))) {
       this.absolutePath = newPath;
       this.name = PathUtil.extractName(newPath);
     } else
       throw new MessagingException("Directory not renamed");
+
+    folder.open(Folder.READ_WRITE);
   }
 
 }

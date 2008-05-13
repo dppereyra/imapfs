@@ -81,7 +81,7 @@ public abstract class IMAPEntry {
     return name + " (" + (isDirectory() ? "dir" : "file") + ")";
   }
 
-  public void printSubtree(int level) {
+  public void printSubtree(int level) throws MessagingException {
     for (int i=0; i<level; i++)
       System.out.print("  ");
 
