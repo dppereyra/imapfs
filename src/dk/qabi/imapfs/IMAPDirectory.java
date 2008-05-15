@@ -18,11 +18,11 @@
 package dk.qabi.imapfs;
 
 import javax.mail.*;
-import javax.mail.search.SubjectTerm;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.sun.mail.imap.IMAPFolder;
+import dk.qabi.imapfs.util.PathUtil;
 
 /**
  *
@@ -32,6 +32,7 @@ import com.sun.mail.imap.IMAPFolder;
 public class IMAPDirectory extends IMAPEntry {
 
   private IMAPFolder folder;
+  private Map<String,IMAPEntry> children;
 
   /**
    * Constructor for creating a new directory
@@ -95,22 +96,24 @@ public class IMAPDirectory extends IMAPEntry {
     return this.parent == null;
   }
 
-  public IMAPEntry[] getChildren() throws MessagingException {
-    List<IMAPEntry> children = new ArrayList<IMAPEntry>();
+  public IMAPEntry[] getChildren(boolean refetch) throws MessagingException {
 
-    Folder[] folders = folder.list();
-    for (Folder f : folders) {
-      IMAPEntry child = new IMAPDirectory((IMAPFolder) f, this);
-      children.add(child);
+    if (refetch || children == null) {
+      children = new HashMap<String, IMAPEntry>();
+      Folder[] folders = folder.list();
+      for (Folder f : folders) {
+        IMAPEntry child = new IMAPDirectory((IMAPFolder) f, this);
+        children.put(child.getName(), child);
+      }
+
+      Message[] messages = folder.getMessages();
+      for (Message m : messages) {
+        IMAPEntry child = new IMAPFile(m, this);
+        children.put(child.getName(), child);
+      }
     }
 
-    Message[] messages = folder.getMessages();
-    for (Message m : messages) {
-      IMAPEntry child = new IMAPFile(m, this);
-      children.add(child);
-    }
-
-    return children.toArray(new IMAPEntry[children.size()]);
+    return children.values().toArray(new IMAPEntry[children.size()]);
   }
 
   public IMAPEntry get(String relPath) throws MessagingException {
@@ -120,39 +123,24 @@ public class IMAPDirectory extends IMAPEntry {
     if (pos > -1) {
       String firstPart = relPath.substring(0, pos);
       String rest = relPath.substring(pos+1);
-      result = ((IMAPDirectory)findChild(firstPart)).get(rest);
+      result = ((IMAPDirectory)children.get(firstPart)).get(rest);
     } else {
-      result = findChild(relPath);
+      result = children.get(relPath);
     }
 
     return result;
   }
 
-  private IMAPEntry findChild(String name) throws MessagingException {
-    Folder f = folder.getFolder(name);
-
-    if (f.exists()) {
-      return new IMAPDirectory((IMAPFolder)f, this);
-    } else {
-      Message[] msgs = folder.search(new SubjectTerm(name));
-
-      if (msgs.length > 0)
-        return new IMAPFile(msgs[0], this);
-      else
-        return null;
-
-    }
-  }
-
   public void printSubtree(int level) throws MessagingException {
     super.printSubtree(level);
-    for (IMAPEntry e : getChildren()) {
+    for (IMAPEntry e : getChildren(false)) {
       e.printSubtree(level+1);
     }
   }
 
   void expunge() throws MessagingException {
     folder.expunge();
+    this.clearChildren();
   }
 
   public IMAPFolder getFolder() {
@@ -163,11 +151,11 @@ public class IMAPDirectory extends IMAPEntry {
     return (IMAPFolder) folder.getFolder(name);
   }
 
-  public Object getChildFile(String name) throws MessagingException {
-    Message[] msgs = folder.getMessages();
-    for (Message msg : msgs) {
-      if (msg.getSubject().equals(name))
-        return msg;
+  public IMAPFile getChildFile(String name) throws MessagingException {
+    if (children != null) {
+      IMAPEntry entry = children.get(name);
+      if (entry instanceof IMAPFile)
+        return (IMAPFile) entry;
     }
 
     return null;
@@ -177,6 +165,7 @@ public class IMAPDirectory extends IMAPEntry {
     folder.close(true); // close and expunge
     folder.delete(true);
     folder = null;
+    parent.clearChildren();
   }
 
   public int hashCode() {
@@ -192,10 +181,15 @@ public class IMAPDirectory extends IMAPEntry {
     if (folder.renameTo(folder.getStore().getFolder(newPath))) {
       this.absolutePath = newPath;
       this.name = PathUtil.extractName(newPath);
+      parent.clearChildren();
     } else
       throw new MessagingException("Directory not renamed");
 
     folder.open(Folder.READ_WRITE);
+  }
+
+  public void clearChildren() {
+    this.children = null;
   }
 
 }

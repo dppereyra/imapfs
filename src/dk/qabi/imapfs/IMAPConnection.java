@@ -23,6 +23,9 @@ import com.sun.mail.imap.IMAPFolder;
 import javax.mail.*;
 import java.util.Properties;
 import java.net.URL;
+import java.io.PrintStream;
+import java.io.FileOutputStream;
+import java.io.FileNotFoundException;
 
 public class IMAPConnection {
   private Folder folder;
@@ -30,6 +33,13 @@ public class IMAPConnection {
   public IMAPConnection(URL url) throws MessagingException {
     Properties props = new Properties();
     Session session = Session.getDefaultInstance(props, null);
+
+//    session.setDebug(true);
+//    try {
+//      session.setDebugOut(new PrintStream(new FileOutputStream("foobar.txt")));
+//    } catch (FileNotFoundException e) {
+//      e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+//    }
 
     IMAPStore store = (IMAPStore) session.getStore(url.getProtocol());
 

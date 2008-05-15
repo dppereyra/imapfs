@@ -15,7 +15,7 @@
  * this program; if not, write to the Free Software Foundation, Inc., 59 Temple
  * Place, Suite 330, Boston, MA 02111-1307 USA
  */
-package dk.qabi.imapfs;
+package dk.qabi.imapfs.util;
 
 import java.util.Stack;
 import java.util.StringTokenizer;

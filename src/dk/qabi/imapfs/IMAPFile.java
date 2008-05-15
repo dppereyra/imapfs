@@ -24,12 +24,13 @@ import javax.mail.internet.MimeMultipart;
 import javax.mail.internet.MimeMessage;
 import javax.activation.DataSource;
 import javax.activation.DataHandler;
+import javax.activation.FileDataSource;
 import java.util.Date;
 import java.util.Properties;
 import java.nio.ByteBuffer;
-import java.io.InputStream;
-import java.io.IOException;
-import java.io.ByteArrayInputStream;
+import java.io.*;
+
+import dk.qabi.imapfs.util.*;
 
 /**
  *
@@ -39,6 +40,7 @@ import java.io.ByteArrayInputStream;
 public class IMAPFile extends IMAPEntry {
 
   private Message msg;
+  private File file;
 
   /**
    * Constructor for creating a new file
@@ -122,24 +124,35 @@ public class IMAPFile extends IMAPEntry {
   }
 
   public void readData(ByteBuffer buf, long offset) throws MessagingException, FuseException, IOException {
-    InputStream in = getInputStream();
 
-    if (in == null)
-      return;
+    if (this.file == null) {
+      // Write to disk
+      this.file = DiskStore.getInstance().getFile(absolutePath, getSize());
+
+      FileOutputStream fos = new FileOutputStream(file);
+      InputStream serverin = getInputStream();
+
+      StreamUtil.pump(serverin, fos, 4096);
+    }
+
+    InputStream in = new FileInputStream(this.file);
 
     if (in.skip(offset) == offset) {
-      byte[] bytes = new byte[Math.min(buf.capacity(), msg.getSize())];
+      byte[] bytes = new byte[(int) Math.min(buf.capacity(), file.length()-offset)];
       int nread;
       nread = in.read(bytes);
 
-      if (nread > 0) {
+      if (nread == bytes.length) {
         buf.put(bytes, 0, nread);
+      } else {
+        log.info("read " + nread + " bytes but expected " + bytes.length);
       }
 
       log.info("read " + buf.position() + "/" + buf.capacity() + " requested bytes");
     } else {
       log.info("could not read beyond file length at requested offset " + offset);
     }
+    
   }
 
   private InputStream getInputStream() throws IOException, MessagingException {
@@ -156,6 +169,20 @@ public class IMAPFile extends IMAPEntry {
   }
 
   public void writeData(ByteBuffer buf, long offset) throws MessagingException, IOException {
+    if (this.file == null) {
+      this.file = DiskStore.getInstance().getFile(absolutePath, offset + buf.capacity());
+    }
+
+    RandomAccessFile out = new RandomAccessFile(this.file, "rwd");
+
+    out.seek(offset);
+    out.write(buf.array());
+  }
+
+  public void flush() throws MessagingException, IOException {
+    if (this.file == null) // nothing to flush
+      return;
+
     MimeMessage newMsg = new MimeMessage((MimeMessage) msg);
     Object content = msg.getContent();
 
@@ -175,11 +202,11 @@ public class IMAPFile extends IMAPEntry {
       part = m.getBodyPart(0);
     }
 
-    DataSource ds = new RewritingDataSource(part.getDataHandler(), buf, offset);
+    DataSource ds = new FileDataSource(this.file);
     part.setDataHandler(new DataHandler(ds));
     part.setFileName("_imapfsdata.bin");
 
-    newMsg.setHeader("X-IMAPFS-Filesize", String.valueOf(offset + buf.capacity()));
+    newMsg.setHeader("X-IMAPFS-Filesize", String.valueOf(this.file.length()));
 
     String contentType = MIMETypes.get(PathUtil.extractExtension(name));
     if (contentType != null)
@@ -209,6 +236,7 @@ public class IMAPFile extends IMAPEntry {
     MimeMessage newMsg = new MimeMessage((MimeMessage) msg);
     newMsg.setSubject(newName);
     replaceContainedMessage(newMsg);
+    parent.clearChildren();
   }
 
   public void truncate(long length) throws MessagingException, IOException {
@@ -262,8 +290,14 @@ public class IMAPFile extends IMAPEntry {
   public void moveTo(IMAPDirectory dest) throws MessagingException {
     // Make a copy...
     parent.getFolder().copyMessages(new Message[]{msg}, dest.getFolder());
+    dest.clearChildren();
 
     // ... and remove this
+    msg.setFlag(Flags.Flag.DELETED, true);
+    parent.expunge();
+  }
+
+  public void delete() throws MessagingException {
     msg.setFlag(Flags.Flag.DELETED, true);
     parent.expunge();
   }
