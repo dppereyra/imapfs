@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.net.URL;
 import fuse.*;
 import javax.mail.MessagingException;
+import javax.mail.Quota;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import dk.qabi.imapfs.util.PathUtil;
@@ -31,8 +33,8 @@ import dk.qabi.imapfs.util.PathUtil;
 /**
  * This class implements a user-level Filesystem based on FUSE and FUSE-J interacting with an IMAP server.
  *
- * todo cannot write because of not enough diskspace?
- * todo returned date/size can be quite odd?
+ * todo cannot write because "too long filename" /  "._" files?
+ * todo overwriting file seems to delete it instead?
  * 
  * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
  * todo implement splitting in multiple messages at configurable file lengths
@@ -46,28 +48,20 @@ public class IMAPFileSystem implements Filesystem {
   /* Attributes */
   private FuseStatfs statfs;
 
-  private static final int BLOCK_SIZE = 4096;
+  private static final int BLOCK_SIZE = 512;
   private IMAPDirectory rootEntry;
   private long nextFileHandle;
+  private IMAPConnection con;
 
   /**
    * @param url URL to connect to
    * @throws javax.mail.MessagingException when an IMAP communication occurs
    */
   public IMAPFileSystem(URL url) throws MessagingException {
-                          
-    IMAPConnection con = new IMAPConnection(url);
+    this.con = new IMAPConnection(url);
 
     /* Create a tree structure to represent the file system */
     this.rootEntry = new IMAPDirectory(con.getRootFolder(), null);
-
-    statfs = new FuseStatfs();
-    statfs.blocks = 1000000; // todo implement this with an IMAP quota query?
-    statfs.blockSize = BLOCK_SIZE;
-    statfs.blocksFree = 1000000; // todo implement this with an IMAP quota query?
-    statfs.files = 0; // not really known up-front
-    statfs.filesFree = Integer.MAX_VALUE;
-    statfs.namelen = 2048;
 
     log.info("IMAPFS Initialized ("+ url.getHost() + ")");
 
@@ -176,6 +170,40 @@ public class IMAPFileSystem implements Filesystem {
 
   public FuseStatfs statfs() throws FuseException {
     log.debug("statfs()");
+
+    if (this.statfs == null) {
+
+      this.statfs = new FuseStatfs();
+      statfs.blockSize = BLOCK_SIZE;
+      statfs.files = 3; // not really known up-front
+      statfs.filesFree = 1000000;
+      statfs.namelen = 2048;
+
+      Quota quota;
+      try {
+        quota = con.getQuota();
+      } catch (MessagingException e) {
+        log.error("Cannot get quota", e);
+        throw new FuseException("Cannot get quota").initErrno(FuseException.EACCES);
+      }
+
+      Quota.Resource res = null;
+      if (quota != null) {
+        for (Quota.Resource r : quota.resources) {
+          if ("STORAGE".equals(r.name))
+            res = r;
+        }
+      }
+
+      if (res != null) {
+        statfs.blocks = (int) (res.limit * 1024 / BLOCK_SIZE);
+        statfs.blocksFree = (int) (statfs.blocks - (res.usage * 1024 / BLOCK_SIZE));
+      } else {
+        statfs.blocks = 1000000000;
+        statfs.blocksFree = statfs.blocks;
+      }
+    }
+
     return this.statfs;
   }
 
@@ -299,6 +327,7 @@ public class IMAPFileSystem implements Filesystem {
 
     try {
       ((IMAPFile)entry).truncate(size);
+      this.statfs = null;
     } catch (Exception e) {
       log.error("Error updating file", e);
       throw new FuseException("Error updating file").initErrno(FuseException.EIO); // Map to better error code?
@@ -340,6 +369,7 @@ public class IMAPFileSystem implements Filesystem {
 
     try {
       file.flush();
+      this.statfs = null;
     } catch (Exception e) {
       log.error("I/O error syncing data", e);
       throw new FuseException("I/O error syncing data").initErrno(FuseException.EIO); // Map to better error code?
@@ -399,7 +429,7 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void write(String path, long fh, boolean isWritepage, ByteBuffer buf, long offset) throws FuseException {
-    log.info("write(" + path + ", " + fh + ", " + isWritepage + ", " + buf.capacity() + ", " + offset + ")");
+    log.debug("write(" + path + ", " + fh + ", " + isWritepage + ", " + buf.capacity() + ", " + offset + ")");
     IMAPEntry entry = findEntry(path);
 
     if (isWritepage) {
