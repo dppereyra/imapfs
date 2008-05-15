@@ -78,7 +78,7 @@ public abstract class IMAPEntry {
   public abstract boolean isRoot();
 
   public String toString() {
-    return name + " (" + (isDirectory() ? "dir" : "file") + ")";
+    return name + "(dir)";
   }
 
   public void printSubtree(int level) throws MessagingException {

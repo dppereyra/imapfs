@@ -26,14 +26,17 @@ import fuse.*;
 import javax.mail.MessagingException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import dk.qabi.imapfs.util.PathUtil;
 
 /**
  * This class implements a user-level Filesystem based on FUSE and FUSE-J interacting with an IMAP server.
  *
+ * todo cannot write because of not enough diskspace?
+ * todo returned date/size can be quite odd?
+ * 
  * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
- * todo implement buffering on local disk and only write on flush()
  * todo implement splitting in multiple messages at configurable file lengths
- * todo improve performance with actual local LRU caching on disk?
+ * todo limit on diskusage - LRU?
  * todo multiple IMAP stores?
  */
 public class IMAPFileSystem implements Filesystem {
@@ -43,7 +46,7 @@ public class IMAPFileSystem implements Filesystem {
   /* Attributes */
   private FuseStatfs statfs;
 
-  private static final int blockSize = 1;
+  private static final int BLOCK_SIZE = 4096;
   private IMAPDirectory rootEntry;
   private long nextFileHandle;
 
@@ -59,11 +62,11 @@ public class IMAPFileSystem implements Filesystem {
     this.rootEntry = new IMAPDirectory(con.getRootFolder(), null);
 
     statfs = new FuseStatfs();
-    statfs.blocks = 0;
-    statfs.blockSize = blockSize;
-    statfs.blocksFree = 0;
-    statfs.files = 3; // not really known up-front
-    statfs.filesFree = 0;
+    statfs.blocks = 1000000; // todo implement this with an IMAP quota query?
+    statfs.blockSize = BLOCK_SIZE;
+    statfs.blocksFree = 1000000; // todo implement this with an IMAP quota query?
+    statfs.files = 0; // not really known up-front
+    statfs.filesFree = Integer.MAX_VALUE;
     statfs.namelen = 2048;
 
     log.info("IMAPFS Initialized ("+ url.getHost() + ")");
@@ -71,12 +74,13 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public FuseStat getattr(String absolutePath) throws FuseException {
+    log.debug("getattr(" + absolutePath + ")");
     IMAPEntry entry = findEntry(absolutePath);
 
     FuseStat stat = new FuseStat();
 
     if (entry != null) {
-      stat.mode = entry.isDirectory() ? FuseFtype.TYPE_DIR | 0x1ed : FuseFtype.TYPE_FILE | 0x1ff;
+      stat.mode = entry.isDirectory() ? FuseFtype.TYPE_DIR | 0777 : FuseFtype.TYPE_FILE | 0777;
       stat.nlink = 1;
       stat.uid = 1000;
       stat.gid = 1000;
@@ -84,10 +88,10 @@ public class IMAPFileSystem implements Filesystem {
         stat.size = entry.getSize();
         stat.atime = stat.mtime = stat.ctime = (int) (entry.getTime() / 1000L);
       } catch (Exception e) {
-        log.error("IMAP error determining size");
+        log.error("IMAP error determining size", e);
         throw new FuseException("IMAP error determining file attributes").initErrno(FuseException.ECOMM);
       }
-      stat.blocks = (int) stat.size;
+      stat.blocks = (int) stat.size / BLOCK_SIZE;
     } else {
       log.info("Path '" + absolutePath + "' not found");
       throw new FuseException("Path '" + absolutePath + "' not found").initErrno(FuseException.ENOENT);
@@ -100,13 +104,14 @@ public class IMAPFileSystem implements Filesystem {
    * Return an array with entries to the content the directory passed as a parameter
    */
   public FuseDirEnt[] getdir(String absolutePath) throws FuseException {
+    log.debug("getdir(" + absolutePath + ")");
     FuseDirEnt[] dirEntries;
     IMAPDirectory dir = (IMAPDirectory)findEntry(absolutePath);
 
     if (dir.isDirectory()) {
       IMAPEntry[] children;
       try {
-        children = dir.getChildren();
+        children = dir.getChildren(true);
       } catch (MessagingException e) {
         log.error("Error getting children", e);
         throw new FuseException("Error getting children: " + e.getMessage()).initErrno(FuseException.ENOENT);
@@ -143,7 +148,7 @@ public class IMAPFileSystem implements Filesystem {
     }
 
     if (entry == null) {
-      log.warn("Path '" + path + "' not found");
+      log.debug("Path '" + path + "' not found");
       throw new FuseException("Path '" + path + "' not found").initErrno(FuseException.ENOENT);
     }
 
@@ -151,10 +156,11 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public long open(String path, int flags) throws FuseException {
+    log.debug("open(" + path + ")");
     IMAPEntry entry = findEntry(path);
 
     if (entry.isDirectory()) {
-      log.warn("Cannot open directory entry");
+      log.info("Cannot open directory entry");
       throw new FuseException("Cannot open directory entry").initErrno(FuseException.EACCES);
     }
 
@@ -164,26 +170,32 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public String readlink(String path) throws FuseException {
+    log.debug("readLink(" + path + ")");
     return path;
   }
 
   public FuseStatfs statfs() throws FuseException {
+    log.debug("statfs()");
     return this.statfs;
   }
 
-  public void chmod(String arg0, int arg1) throws FuseException {
+  public void chmod(String path, int mode) throws FuseException {
+    log.debug("chmod(" + path + ", " + mode + ")");
     throw new FuseException("chmod not supported").initErrno(FuseException.EACCES);
   }
 
-  public void chown(String arg0, int arg1, int arg2) throws FuseException {
+  public void chown(String path, int uid, int gid) throws FuseException {
+    log.debug("chown(" + path + ", " + uid + ", " + gid + ")");
     throw new FuseException("chown not supported").initErrno(FuseException.EACCES);
   }
 
-  public void link(String arg0, String arg1) throws FuseException {
+  public void link(String from, String to) throws FuseException {
+    log.debug("link(" + from + ", " + to + ")");
     throw new FuseException("link not supported").initErrno(FuseException.EACCES);
   }
 
   public void mkdir(String path, int mode) throws FuseException {
+    log.debug("mkdir(" + path + ", " + mode + ")");
     IMAPEntry parent = findEntry(PathUtil.extractParent(path));
 
     if (!(parent instanceof IMAPDirectory)) {
@@ -201,6 +213,7 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void mknod(String path, int mode, int rdev) throws FuseException {
+    log.info("mknod(" + path + ", " + mode + ")");
     IMAPEntry parent = findEntry(PathUtil.extractParent(path));
 
     if (!(parent instanceof IMAPDirectory)) {
@@ -218,6 +231,7 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void rename(String from, String to) throws FuseException {
+    log.debug("rename(" + from + ", " + to + ")");
     IMAPEntry src = findEntry(from);
     IMAPEntry srcdir = findEntry(PathUtil.extractParent(from));
     IMAPEntry destdir = findEntry(PathUtil.extractParent(to));
@@ -261,6 +275,7 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void rmdir(String path) throws FuseException {
+    log.debug("rmdir(" + path + ")");
     IMAPDirectory dir = (IMAPDirectory)findEntry(path);
 
     if (dir.isDirectory()) {
@@ -274,6 +289,7 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void truncate(String path, long size) throws FuseException {
+    log.debug("truncate(" + path + ", " + size + ")");
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -284,12 +300,13 @@ public class IMAPFileSystem implements Filesystem {
     try {
       ((IMAPFile)entry).truncate(size);
     } catch (Exception e) {
-      log.error("Error updating file");
+      log.error("Error updating file", e);
       throw new FuseException("Error updating file").initErrno(FuseException.EIO); // Map to better error code?
     }
   }
 
   public void utime(String path, int atime, int mtime) throws FuseException {
+    log.debug("utime(" + path + ", " + atime + ", " + mtime + ")");
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -300,31 +317,67 @@ public class IMAPFileSystem implements Filesystem {
     try {
       ((IMAPFile)entry).setTime(mtime*1000);
     } catch (MessagingException e) {
-      log.error("Error updating file");
+      log.error("Error updating file", e);
       throw new FuseException("Error updating file").initErrno(FuseException.EIO); // Map to better error code?
     }
   }
 
   public void flush(String path, long fh) throws FuseException {
+    log.debug("flush(" + path + ", " + fh + ")");
     // Ignore for now
   }
 
   public void fsync(String path, long fh, boolean isDatasync) throws FuseException {
-    // todo flush any open write buffer for the given path
-    throw new FuseException("todo").initErrno(FuseException.EACCES);
+    log.debug("fsync(" + path + ", " + fh + ")");
+    IMAPEntry entry = findEntry(path);
+
+    if (!(entry instanceof IMAPFile)) {
+      log.warn("Cannot fsync directory entry");
+      throw new FuseException("Cannot fsync directory entry").initErrno(FuseException.EACCES);
+    }
+
+    IMAPFile file = (IMAPFile) entry;
+
+    try {
+      file.flush();
+    } catch (Exception e) {
+      log.error("I/O error syncing data", e);
+      throw new FuseException("I/O error syncing data").initErrno(FuseException.EIO); // Map to better error code?
+    }
+
   }
 
-  public void symlink(String arg0, String arg1) throws FuseException {
+  public void symlink(String from, String to) throws FuseException {
+    log.debug("symlink(" + from + ", " + to + ")");
     throw new FuseException("symlink not supported").initErrno(FuseException.EACCES);
   }
 
-  public void unlink(String arg0) throws FuseException {
-    throw new FuseException("unlink not supported").initErrno(FuseException.EACCES);
+  public void unlink(String path) throws FuseException {
+    log.debug("unlink(" + path + ")");
+
+    IMAPEntry entry = findEntry(path);
+
+    if (!(entry instanceof IMAPFile)) {
+      log.warn("Cannot read data from directory entry");
+      throw new FuseException("Cannot read data from directory entry").initErrno(FuseException.EACCES);
+    }
+
+    IMAPFile file = (IMAPFile) entry;
+
+    try {
+      file.delete();
+    } catch (MessagingException e) {
+      log.error("IMAP error deleting message of '"+path+"'", e);
+      throw new FuseException("IMAP error deleting message of '"+path+"'").initErrno(FuseException.ECOMM); // Map to better error code?
+    }
   }
 
-  public void release(String path, long fh, int flags) throws FuseException {}
+  public void release(String path, long fh, int flags) throws FuseException {
+    log.debug("release(" + path + ", " + fh + ", " + flags + ")");
+  }
 
   public void read(String path, long fh, ByteBuffer buf, long offset) throws FuseException {
+    log.debug("read(" + path + ", " + buf.capacity() + ", " + offset + ")");
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -337,15 +390,16 @@ public class IMAPFileSystem implements Filesystem {
     try {
       file.readData(buf, offset);
     } catch (MessagingException e) {
-      log.error("IMAP error reading data");
-      throw new FuseException("IMAP error reading data").initErrno(FuseException.ECOMM); // Map to better error code?
+      log.error("IMAP error reading data of '"+path+"'", e);
+      throw new FuseException("IMAP error reading data of '"+path+"'").initErrno(FuseException.ECOMM); // Map to better error code?
     } catch (IOException e) {
-      log.error("I/O error reading data");
+      log.error("I/O error reading data", e);
       throw new FuseException("I/O error reading data").initErrno(FuseException.EIO); // Map to better error code?
     }
   }
 
   public void write(String path, long fh, boolean isWritepage, ByteBuffer buf, long offset) throws FuseException {
+    log.info("write(" + path + ", " + fh + ", " + isWritepage + ", " + buf.capacity() + ", " + offset + ")");
     IMAPEntry entry = findEntry(path);
 
     if (isWritepage) {
@@ -363,12 +417,11 @@ public class IMAPFileSystem implements Filesystem {
     try {
       file.writeData(buf, offset);
     } catch (MessagingException e) {
-      log.error("IMAP error reading data");
+      log.error("IMAP error reading data", e);
       throw new FuseException("IMAP error reading data").initErrno(FuseException.ECOMM); // Map to better error code?
     } catch (IOException e) {
-      log.error("I/O error reading data");
+      log.error("I/O error reading data", e);
       throw new FuseException("I/O error reading data").initErrno(FuseException.EIO); // Map to better error code?
     }
   }
-
 }
