@@ -29,6 +29,7 @@ import java.io.FileNotFoundException;
 
 public class IMAPConnection {
   private Folder folder;
+  private IMAPStore store;
 
   public IMAPConnection(URL url) throws MessagingException {
     Properties props = new Properties();
@@ -41,7 +42,7 @@ public class IMAPConnection {
 //      e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
 //    }
 
-    IMAPStore store = (IMAPStore) session.getStore(url.getProtocol());
+    store = (IMAPStore) session.getStore(url.getProtocol());
 
     String username = null;
     String password = null;
@@ -55,7 +56,6 @@ public class IMAPConnection {
       if (parts.length > 1)
         password = parts[1];
     }
-
 
     if (username == null)
       username = System.getProperty("imapfs.username");
@@ -79,6 +79,15 @@ public class IMAPConnection {
       folder.create(Folder.HOLDS_MESSAGES);
 
     folder.open(Folder.READ_WRITE);
+  }
+
+  public Quota getQuota() throws MessagingException {
+    Quota[] quotas = store.getQuota(folder.getFullName());
+
+    if (quotas != null && quotas.length > 0)
+      return quotas[0];
+    else
+      return null;
   }
 
   public IMAPFolder getRootFolder() {

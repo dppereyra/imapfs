@@ -63,6 +63,7 @@ public class IMAPFile extends IMAPEntry {
     msg.setText("");
     this.msg.saveChanges();
     parent.getFolder().addMessages(new Message[]{this.msg});
+    parent.clearChildren();
   }
 
   /**
