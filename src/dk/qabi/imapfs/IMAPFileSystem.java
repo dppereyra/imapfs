@@ -33,9 +33,12 @@ import dk.qabi.imapfs.util.PathUtil;
 /**
  * This class implements a user-level Filesystem based on FUSE and FUSE-J interacting with an IMAP server.
  *
- * todo cannot write because "too long filename" /  "._" files?
+ * todo unable to copy file to volume
  * todo overwriting file seems to delete it instead?
- * 
+ * todo make fuse-j write alle exceptions to console that aren't instances of FuseException
+ * todo only sync/flush if dirty
+
+ * todo store ._ files as second attachment?
  * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
  * todo implement splitting in multiple messages at configurable file lengths
  * todo limit on diskusage - LRU?
@@ -69,27 +72,23 @@ public class IMAPFileSystem implements Filesystem {
 
   public FuseStat getattr(String absolutePath) throws FuseException {
     log.debug("getattr(" + absolutePath + ")");
+
     IMAPEntry entry = findEntry(absolutePath);
 
     FuseStat stat = new FuseStat();
 
-    if (entry != null) {
-      stat.mode = entry.isDirectory() ? FuseFtype.TYPE_DIR | 0777 : FuseFtype.TYPE_FILE | 0777;
-      stat.nlink = 1;
-      stat.uid = 1000;
-      stat.gid = 1000;
-      try {
-        stat.size = entry.getSize();
-        stat.atime = stat.mtime = stat.ctime = (int) (entry.getTime() / 1000L);
-      } catch (Exception e) {
-        log.error("IMAP error determining size", e);
-        throw new FuseException("IMAP error determining file attributes").initErrno(FuseException.ECOMM);
-      }
-      stat.blocks = (int) stat.size / BLOCK_SIZE;
-    } else {
-      log.info("Path '" + absolutePath + "' not found");
-      throw new FuseException("Path '" + absolutePath + "' not found").initErrno(FuseException.ENOENT);
+    stat.mode = entry.isDirectory() ? FuseFtype.TYPE_DIR | 0777 : FuseFtype.TYPE_FILE | 0777;
+    stat.nlink = 1;
+    stat.uid = 1000;
+    stat.gid = 1000;
+    try {
+      stat.size = entry.getSize();
+      stat.atime = stat.mtime = stat.ctime = (int) (entry.getTime() / 1000L);
+    } catch (Exception e) {
+      log.error("IMAP error determining size", e);
+      throw new FuseException("IMAP error determining file attributes").initErrno(FuseException.ECOMM);
     }
+    stat.blocks = (int) stat.size / BLOCK_SIZE;
 
     return stat;
   }
@@ -353,11 +352,15 @@ public class IMAPFileSystem implements Filesystem {
 
   public void flush(String path, long fh) throws FuseException {
     log.debug("flush(" + path + ", " + fh + ")");
-    // Ignore for now
+    sync(path);
   }
 
   public void fsync(String path, long fh, boolean isDatasync) throws FuseException {
     log.debug("fsync(" + path + ", " + fh + ")");
+    sync(path);
+  }
+
+  private void sync(String path) throws FuseException {
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -374,7 +377,6 @@ public class IMAPFileSystem implements Filesystem {
       log.error("I/O error syncing data", e);
       throw new FuseException("I/O error syncing data").initErrno(FuseException.EIO); // Map to better error code?
     }
-
   }
 
   public void symlink(String from, String to) throws FuseException {

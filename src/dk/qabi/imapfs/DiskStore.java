@@ -14,9 +14,16 @@ public class DiskStore {
 
 
   public File getFile(String path, long size) {
-    File parent = new File(Configuration.getDiskstoreFolder(), PathUtil.extractParent(path));
-    parent.mkdirs();
+    final String parentPath = PathUtil.extractParent(path);
 
+    File parent;
+    if (!"/".equals(parentPath))
+      parent = new File(Configuration.getDiskstoreFolder(), parentPath);
+    else
+      parent = Configuration.getDiskstoreFolder();
+
+    parent.mkdirs();
+    
     return new File(parent, PathUtil.extractName(path));
   }
 }

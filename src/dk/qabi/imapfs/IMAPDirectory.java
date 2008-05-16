@@ -65,7 +65,10 @@ public class IMAPDirectory extends IMAPEntry {
    */
   public IMAPDirectory(IMAPFolder folder, IMAPDirectory parent) throws MessagingException {
     this.parent = parent;
-    this.name = folder.getName();
+    if (parent != null)
+      this.name = folder.getName();
+    else
+      this.name = "/";
     this.folder = folder;
 
     if (parent != null) {
@@ -125,6 +128,7 @@ public class IMAPDirectory extends IMAPEntry {
       String rest = relPath.substring(pos+1);
       result = ((IMAPDirectory)children.get(firstPart)).get(rest);
     } else {
+      getChildren(false);
       result = children.get(relPath);
     }
 
@@ -152,13 +156,12 @@ public class IMAPDirectory extends IMAPEntry {
   }
 
   public IMAPFile getChildFile(String name) throws MessagingException {
-    if (children != null) {
-      IMAPEntry entry = children.get(name);
-      if (entry instanceof IMAPFile)
-        return (IMAPFile) entry;
-    }
-
-    return null;
+    getChildren(true);
+    IMAPEntry entry = children.get(name);
+    if (entry instanceof IMAPFile)
+      return (IMAPFile) entry;
+    else
+      return null;
   }
 
   public void delete() throws MessagingException {

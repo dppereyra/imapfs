@@ -41,6 +41,7 @@ public class IMAPFile extends IMAPEntry {
 
   private Message msg;
   private File file;
+  private long serverLastModified;
 
   /**
    * Constructor for creating a new file
@@ -134,6 +135,7 @@ public class IMAPFile extends IMAPEntry {
       InputStream serverin = getInputStream();
 
       StreamUtil.pump(serverin, fos, 4096);
+      this.serverLastModified = this.getTime();
     }
 
     InputStream in = new FileInputStream(this.file);
@@ -172,16 +174,19 @@ public class IMAPFile extends IMAPEntry {
   public void writeData(ByteBuffer buf, long offset) throws MessagingException, IOException {
     if (this.file == null) {
       this.file = DiskStore.getInstance().getFile(absolutePath, offset + buf.capacity());
+      this.serverLastModified = 0;
     }
 
     RandomAccessFile out = new RandomAccessFile(this.file, "rwd");
 
     out.seek(offset);
-    out.write(buf.array());
+    byte[] bytes = new byte[buf.remaining()];
+    buf.get(bytes);
+    out.write(bytes);
   }
 
   public void flush() throws MessagingException, IOException {
-    if (this.file == null) // nothing to flush
+    if (!this.isDirty()) // nothing to flush
       return;
 
     MimeMessage newMsg = new MimeMessage((MimeMessage) msg);
@@ -301,5 +306,9 @@ public class IMAPFile extends IMAPEntry {
   public void delete() throws MessagingException {
     msg.setFlag(Flags.Flag.DELETED, true);
     parent.expunge();
+  }
+
+  public boolean isDirty() {
+    return this.file != null && this.file.lastModified() > serverLastModified;
   }
 }
