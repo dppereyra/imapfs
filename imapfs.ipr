@@ -275,9 +275,7 @@
         <root url="jar://$PROJECT_DIR$/lib/activation.jar!/" />
       </CLASSES>
       <JAVADOC />
-      <SOURCES>
-        <root url="intellijad://intellijad" />
-      </SOURCES>
+      <SOURCES />
     </library>
     <library name="fuse-j">
       <CLASSES>
