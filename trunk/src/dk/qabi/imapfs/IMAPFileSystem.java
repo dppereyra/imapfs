@@ -35,14 +35,13 @@ import dk.qabi.imapfs.util.PathUtil;
  *
  * todo unable to copy file to volume
  * todo overwriting file seems to delete it instead?
- * todo make fuse-j write alle exceptions to console that aren't instances of FuseException
  * todo only sync/flush if dirty
-
- * todo store ._ files as second attachment?
- * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
- * todo implement splitting in multiple messages at configurable file lengths
  * todo limit on diskusage - LRU?
- * todo multiple IMAP stores?
+ * todo implement splitting in multiple messages at configurable file lengths
+
+ * - store ._ files as second attachment?
+ * - custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
+ * - multiple IMAP stores?
  */
 public class IMAPFileSystem implements Filesystem {
 
@@ -71,8 +70,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public FuseStat getattr(String absolutePath) throws FuseException {
-    log.debug("getattr(" + absolutePath + ")");
-
     IMAPEntry entry = findEntry(absolutePath);
 
     FuseStat stat = new FuseStat();
@@ -97,7 +94,6 @@ public class IMAPFileSystem implements Filesystem {
    * Return an array with entries to the content the directory passed as a parameter
    */
   public FuseDirEnt[] getdir(String absolutePath) throws FuseException {
-    log.debug("getdir(" + absolutePath + ")");
     FuseDirEnt[] dirEntries;
     IMAPDirectory dir = (IMAPDirectory)findEntry(absolutePath);
 
@@ -149,7 +145,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public long open(String path, int flags) throws FuseException {
-    log.debug("open(" + path + ")");
     IMAPEntry entry = findEntry(path);
 
     if (entry.isDirectory()) {
@@ -163,13 +158,10 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public String readlink(String path) throws FuseException {
-    log.debug("readLink(" + path + ")");
     return path;
   }
 
   public FuseStatfs statfs() throws FuseException {
-    log.debug("statfs()");
-
     if (this.statfs == null) {
 
       this.statfs = new FuseStatfs();
@@ -207,22 +199,18 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void chmod(String path, int mode) throws FuseException {
-    log.debug("chmod(" + path + ", " + mode + ")");
     throw new FuseException("chmod not supported").initErrno(FuseException.EACCES);
   }
 
   public void chown(String path, int uid, int gid) throws FuseException {
-    log.debug("chown(" + path + ", " + uid + ", " + gid + ")");
     throw new FuseException("chown not supported").initErrno(FuseException.EACCES);
   }
 
   public void link(String from, String to) throws FuseException {
-    log.debug("link(" + from + ", " + to + ")");
     throw new FuseException("link not supported").initErrno(FuseException.EACCES);
   }
 
   public void mkdir(String path, int mode) throws FuseException {
-    log.debug("mkdir(" + path + ", " + mode + ")");
     IMAPEntry parent = findEntry(PathUtil.extractParent(path));
 
     if (!(parent instanceof IMAPDirectory)) {
@@ -240,7 +228,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void mknod(String path, int mode, int rdev) throws FuseException {
-    log.info("mknod(" + path + ", " + mode + ")");
     IMAPEntry parent = findEntry(PathUtil.extractParent(path));
 
     if (!(parent instanceof IMAPDirectory)) {
@@ -258,7 +245,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void rename(String from, String to) throws FuseException {
-    log.debug("rename(" + from + ", " + to + ")");
     IMAPEntry src = findEntry(from);
     IMAPEntry srcdir = findEntry(PathUtil.extractParent(from));
     IMAPEntry destdir = findEntry(PathUtil.extractParent(to));
@@ -302,7 +288,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void rmdir(String path) throws FuseException {
-    log.debug("rmdir(" + path + ")");
     IMAPDirectory dir = (IMAPDirectory)findEntry(path);
 
     if (dir.isDirectory()) {
@@ -316,7 +301,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void truncate(String path, long size) throws FuseException {
-    log.debug("truncate(" + path + ", " + size + ")");
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -334,7 +318,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void utime(String path, int atime, int mtime) throws FuseException {
-    log.debug("utime(" + path + ", " + atime + ", " + mtime + ")");
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -351,12 +334,10 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void flush(String path, long fh) throws FuseException {
-    log.debug("flush(" + path + ", " + fh + ")");
     sync(path);
   }
 
   public void fsync(String path, long fh, boolean isDatasync) throws FuseException {
-    log.debug("fsync(" + path + ", " + fh + ")");
     sync(path);
   }
 
@@ -380,13 +361,10 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void symlink(String from, String to) throws FuseException {
-    log.debug("symlink(" + from + ", " + to + ")");
     throw new FuseException("symlink not supported").initErrno(FuseException.EACCES);
   }
 
   public void unlink(String path) throws FuseException {
-    log.debug("unlink(" + path + ")");
-
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -405,11 +383,9 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void release(String path, long fh, int flags) throws FuseException {
-    log.debug("release(" + path + ", " + fh + ", " + flags + ")");
   }
 
   public void read(String path, long fh, ByteBuffer buf, long offset) throws FuseException {
-    log.debug("read(" + path + ", " + buf.capacity() + ", " + offset + ")");
     IMAPEntry entry = findEntry(path);
 
     if (!(entry instanceof IMAPFile)) {
@@ -431,7 +407,6 @@ public class IMAPFileSystem implements Filesystem {
   }
 
   public void write(String path, long fh, boolean isWritepage, ByteBuffer buf, long offset) throws FuseException {
-    log.debug("write(" + path + ", " + fh + ", " + isWritepage + ", " + buf.capacity() + ", " + offset + ")");
     IMAPEntry entry = findEntry(path);
 
     if (isWritepage) {

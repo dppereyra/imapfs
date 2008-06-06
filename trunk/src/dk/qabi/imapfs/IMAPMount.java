@@ -23,6 +23,8 @@ import java.net.MalformedURLException;
 import fuse.*;
 import javax.mail.MessagingException;
 
+import org.apache.commons.logging.LogFactory;
+
 /**
  * This class has the main method and thereby implements the application for mounting an IMAP filesystem.
  */
@@ -47,7 +49,7 @@ public class IMAPMount {
     fs_args[2] = mountpoint;
     fs_args[3] = "-ovolname="+ url.getHost() + ",fssubtype=7";
 
-    Filesystem imapfs = new IMAPFileSystem(url);
+    Filesystem imapfs = new LoggingFilesystem(new IMAPFileSystem(url), LogFactory.getLog("dk.qabi.imapfs"));
 
     
 
