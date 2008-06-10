@@ -19,6 +19,7 @@ package dk.qabi.imapfs;
 
 import java.net.URL;
 import java.net.MalformedURLException;
+import java.io.File;
 
 import fuse.*;
 import javax.mail.MessagingException;
@@ -51,7 +52,10 @@ public class IMAPMount {
 
     Filesystem imapfs = new LoggingFilesystem(new IMAPFileSystem(url), LogFactory.getLog("dk.qabi.imapfs"));
 
-    
+
+    File m = new File(mountpoint);
+    if (!m.exists())
+      m.mkdirs();
 
     try {
       FuseMount.mount(fs_args, imapfs);

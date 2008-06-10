@@ -39,6 +39,7 @@ import dk.qabi.imapfs.util.*;
  */
 public class IMAPFile extends IMAPEntry {
 
+  private static final String DATA_ATTCH_NAME = "_imapfsdata.bin";
   private Message msg;
   private File file;
   private long serverLastModified;
@@ -210,7 +211,7 @@ public class IMAPFile extends IMAPEntry {
 
     DataSource ds = new FileDataSource(this.file);
     part.setDataHandler(new DataHandler(ds));
-    part.setFileName("_imapfsdata.bin");
+    part.setFileName(DATA_ATTCH_NAME);
 
     newMsg.setHeader("X-IMAPFS-Filesize", String.valueOf(this.file.length()));
 
@@ -277,7 +278,7 @@ public class IMAPFile extends IMAPEntry {
 
     DataSource ds = new RewritingDataSource(part.getDataHandler(), buf, length);
     part.setDataHandler(new DataHandler(ds));
-    part.setFileName("_imapfsdata.bin");
+    part.setFileName(DATA_ATTCH_NAME);
 
     newMsg.setHeader("X-IMAPFS-Filesize", String.valueOf(size));
 
@@ -304,6 +305,9 @@ public class IMAPFile extends IMAPEntry {
   }
 
   public void delete() throws MessagingException {
+    if (this.file != null) {
+      this.file.delete();
+    }
     msg.setFlag(Flags.Flag.DELETED, true);
     parent.expunge();
   }

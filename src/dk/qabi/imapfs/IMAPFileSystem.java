@@ -33,15 +33,11 @@ import dk.qabi.imapfs.util.PathUtil;
 /**
  * This class implements a user-level Filesystem based on FUSE and FUSE-J interacting with an IMAP server.
  *
- * todo unable to copy file to volume
- * todo overwriting file seems to delete it instead?
- * todo only sync/flush if dirty
+ * todo unable to copy file to volume with finder (cp works ok)
+ * todo overwriting file seems to delete it instead? (related to the above?)
  * todo limit on diskusage - LRU?
  * todo implement splitting in multiple messages at configurable file lengths
-
- * - store ._ files as second attachment?
- * - custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
- * - multiple IMAP stores?
+ * todo custom icon: volicon=PATH, where PATH is path to an icon (.icns) file as well as fssubtype=N
  */
 public class IMAPFileSystem implements Filesystem {
 
@@ -74,7 +70,7 @@ public class IMAPFileSystem implements Filesystem {
 
     FuseStat stat = new FuseStat();
 
-    stat.mode = entry.isDirectory() ? FuseFtype.TYPE_DIR | 0777 : FuseFtype.TYPE_FILE | 0777;
+    stat.mode = entry.isDirectory() ? FuseFtype.TYPE_DIR | 0x1ff : FuseFtype.TYPE_FILE | 0x1ff; // octal 777
     stat.nlink = 1;
     stat.uid = 1000;
     stat.gid = 1000;
